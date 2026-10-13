@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# xstream-recover: manual rescue from the X publisher-lock thrash.
+# Kills OBS and any running guard, waits out the pscp publisher lock
+# (~2-4 min; 5 by default for margin), relaunches OBS clean, then
+# restarts the guard. Afterwards, click Start once on the X target.
+
+set -u
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+LOCK_WAIT_SECS="${LOCK_WAIT_SECS:-300}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# guard lives next to this script; fall back to PATH
+GUARD="${XSTREAM_GUARD:-$HERE/xstream-guard}"
+[ -x "$GUARD" ] || GUARD="$(command -v xstream-guard || true)"
+[ -n "$GUARD" ] || { echo "xstream-guard not found (set XSTREAM_GUARD)" >&2; exit 1; }
+
+pkill -f xstream-guard 2>/dev/null
+pkill -x obs 2>/dev/null
+
+echo "waiting ${LOCK_WAIT_SECS}s for X's publisher lock to expire..."
+sleep "$LOCK_WAIT_SECS"
+
+pgrep -x obs >/dev/null 2>&1 || setsid nohup obs >/dev/null 2>&1 </dev/null &
+sleep 20
+setsid nohup "$GUARD" >/dev/null 2>&1 </dev/null &
+echo "OBS is up and guard is watching. Click start on the X target once."

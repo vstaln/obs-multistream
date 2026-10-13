@@ -1,0 +1,42 @@
+{
+  "audio_configs": [],
+  "targets": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "output-param": {
+        "bind_ip": "default",
+        "drop_threshold_ms": 1000,
+        "max_shutdown_time_sec": 30,
+        "pframe_drop_threshold_ms": 1200
+      },
+      "protocol": "RTMP",
+      "service-param": {
+        "key": "__YOUTUBE_STREAM_KEY__",
+        "server": "rtmps://a.rtmps.youtube.com:443/live2",
+        "use_auth": false
+      },
+      "sync-start": true,
+      "sync-stop": true
+    },
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "output-param": {
+        "bind_ip": "default",
+        "drop_threshold_ms": 1000,
+        "max_shutdown_time_sec": 30,
+        "pframe_drop_threshold_ms": 1200
+      },
+      "protocol": "RTMP",
+      "service-param": {
+        "key": "__TWITCH_STREAM_KEY__",
+        "server": "__TWITCH_INGEST__",
+        "use_auth": false
+      },
+      "sync-start": true,
+      "sync-stop": true
+    }
+  ],
+  "video_configs": []
+}

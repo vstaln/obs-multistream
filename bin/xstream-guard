@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# xstream-guard: watchdog for X/Twitter RTMP publishing via OBS.
+#
+# Why this exists:
+#   X (pscp.tv) allows exactly ONE publisher per stream key, with a ~60-240s
+#   lockout after any disconnect. obs-multi-rtmp retries every ~2s, so one
+#   failed attempt becomes an infinite thrash: every retry is EPIPE-killed
+#   and resets the lock timer. This guard tails the newest OBS log; when it
+#   sees a reconnect storm it kills OBS, waits out the lock, and relaunches.
+#
+# Exits when OBS exits normally.
+#
+# Env overrides:
+#   DISPLAY           (default :0)
+#   XAUTHORITY        (default ~/.Xauthority)
+#   OBS_LOGDIR        (default ~/.config/obs-studio/logs)
+#   LOCK_WAIT_SECS    (default 300)  quiet window before relaunching OBS
+#   RECONNECT_WINDOW  (default 40)   only count reconnects in last N log lines
+#   RECONNECT_MAX     (default 3)    reconnects inside the window = thrash
+#   POLL_SECS         (default 5)
+
+set -u
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+OBS_LOGDIR="${OBS_LOGDIR:-$HOME/.config/obs-studio/logs}"
+LOCK_WAIT_SECS="${LOCK_WAIT_SECS:-300}"
+RECONNECT_WINDOW="${RECONNECT_WINDOW:-40}"
+RECONNECT_MAX="${RECONNECT_MAX:-3}"
+POLL_SECS="${POLL_SECS:-5}"
+
+obs_running() { pgrep -x obs >/dev/null 2>&1; }
+relaunch_obs() { setsid nohup obs >/dev/null 2>&1 </dev/null & }
+
+current_log() {
+  # newest *.txt log only; ignore rotated/other files in the dir
+  ls -t "$OBS_LOGDIR"/*.txt 2>/dev/null | head -1
+}
+
+if ! obs_running; then
+  # Let any publisher lock from a previous session expire, then relaunch —
+  # unless OBS already came up during the wait (don't spawn a second copy).
+  sleep "$LOCK_WAIT_SECS"
+  obs_running || { relaunch_obs; sleep 20; }
+fi
+
+while true; do
+  obs_running || exit 0
+  LOG="$(current_log)"
+  if [ -n "$LOG" ]; then
+    # Count reconnects in the recent tail only. Counting the whole session
+    # log would kill OBS after a few unrelated, already-recovered blips.
+    thrash="$(tail -n "$RECONNECT_WINDOW" "$LOG" 2>/dev/null | grep -c "Reconnecting in")"
+    if [ "${thrash:-0}" -ge "$RECONNECT_MAX" ]; then
+      pkill -x obs
+      sleep "$LOCK_WAIT_SECS"   # quiet window >= lockout, then clean relaunch
+      obs_running || relaunch_obs
+      sleep 20
+    fi
+  fi
+  sleep "$POLL_SECS"
+done
